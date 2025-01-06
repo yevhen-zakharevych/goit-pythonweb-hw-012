@@ -18,6 +18,7 @@ from db import Base, engine, get_db, Contact, User
 from schemas import ContactCreate, ContactUpdate, ContactResponse, UserModel
 from src.services.email import send_email
 from src.services.upload_file import UploadFileService
+from src.repositories.contacts import ContactRepository
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -70,8 +71,6 @@ async def signup(
     return {"new_user": new_user.username}
 
 
-
-
 @app.post("/login")
 async def login(
     body: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
@@ -106,14 +105,8 @@ def create_contact(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    db_contact = db.query(Contact).filter(Contact.email == contact.email, Contact.user_id == current_user.id).first()
-    if db_contact:
-        raise HTTPException(status_code=400, detail="Contact with this email already exists.")
-
-    new_contact = Contact(**contact.dict(), user_id=current_user.id)
-    db.add(new_contact)
-    db.commit()
-    db.refresh(new_contact)
+    contact_repo = ContactRepository(db)
+    new_contact = contact_repo.create_contact(contact, user_id=current_user.id)
     return new_contact
 
 
@@ -124,14 +117,8 @@ def read_contacts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Contact).filter(Contact.user_id == current_user.id)
-
-    if name:
-        query = query.filter((Contact.first_name.ilike(f"%{name}%")) | (Contact.last_name.ilike(f"%{name}%")))
-    if email:
-        query = query.filter(Contact.email.ilike(f"%{email}%"))
-
-    return query.all()
+    contact_repo = ContactRepository(db)
+    return contact_repo.get_contacts(name, email, current_user.id)
 
 
 @app.get("/contacts/{contact_id}", response_model=ContactResponse)
@@ -140,7 +127,8 @@ def read_contact(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.user_id == current_user.id).first()
+    contact_repo = ContactRepository(db)
+    contact = contact_repo.get_contact_by_id(contact_id, current_user.id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found.")
     return contact
@@ -152,16 +140,8 @@ def update_contact(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    db_contact = db.query(Contact).filter(Contact.id == contact_id, Contact.user_id == current_user.id).first()
-    if not db_contact:
-        raise HTTPException(status_code=404, detail="Contact not found.")
-
-    for key, value in contact.dict(exclude_unset=True).items():
-        setattr(db_contact, key, value)
-
-    db.commit()
-    db.refresh(db_contact)
-    return db_contact
+    contact_repo = ContactRepository(db)
+    return contact_repo.update_contact(contact_id, current_user.id, contact.dict(exclude_unset=True))
 
 
 @app.delete("/contacts/{contact_id}", response_model=dict)
@@ -170,13 +150,8 @@ def delete_contact(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    db_contact = db.query(Contact).filter(Contact.id == contact_id, Contact.user_id == current_user.id).first()
-    if not db_contact:
-        raise HTTPException(status_code=404, detail="Contact not found.")
-
-    db.delete(db_contact)
-    db.commit()
-    return {"detail": "Contact deleted successfully."}
+    contact_repo = ContactRepository(db)
+    return contact_repo.delete_contact(contact_id, current_user.id)
 
 
 @app.get("/contacts/upcoming-birthdays/", response_model=List[ContactResponse], )
@@ -186,13 +161,8 @@ def upcoming_birthdays(
 ):
     today = date.today()
     next_week = today + timedelta(days=7)
-
-    contacts = (
-        db.query(Contact)
-        .filter(Contact.birthday >= today, Contact.birthday <= next_week)
-        .all()
-    )
-
+    contacts_repo = ContactRepository(db)
+    contacts = contacts_repo.get_birthdays(current_user.id, today, next_week)
     return contacts
 
 
