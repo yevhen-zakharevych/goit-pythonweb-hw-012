@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from fastapi import FastAPI, Query, HTTPException, Depends, status, BackgroundTasks, Request, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from slowapi import Limiter
@@ -14,8 +15,8 @@ from starlette.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.services.auth import create_access_token, get_current_user, Hash, get_email_from_token
-from db import Base, engine, get_db, User
-from schemas import ContactCreate, ContactUpdate, ContactResponse, UserModel
+from src.db import Base, engine, get_db, User
+from src.schemas import ContactCreate, ContactUpdate, ContactResponse, UserModel
 from src.services.email import send_email
 from src.services.upload_file import UploadFileService
 from src.repositories.contacts import ContactRepository
@@ -55,7 +56,8 @@ async def signup(
     """
     Create a new user
     """
-    exist_user = db.query(User).filter(User.username == body.username).first()
+    exist_user = await db.execute(select(User).filter(User.username == body.username))
+    exist_user = exist_user.scalars().first()
     if exist_user:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Account already exists"
@@ -81,7 +83,9 @@ async def login(
     """
     Login user
     """
-    user = db.query(User).filter(User.username == body.username).first()
+    result = await db.execute(select(User).filter(User.username == body.username))
+    user = result.scalar_one_or_none()
+
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username"

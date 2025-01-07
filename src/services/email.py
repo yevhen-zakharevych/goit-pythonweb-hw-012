@@ -6,7 +6,6 @@ from fastapi_mail.errors import ConnectionErrors
 from pydantic import EmailStr
 
 from src.services.auth import create_email_token
-# from src.conf.config import settings
 from dotenv import load_dotenv
 
 load_dotenv()
