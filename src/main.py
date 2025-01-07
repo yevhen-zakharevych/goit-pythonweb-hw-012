@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.services.auth import create_access_token, get_current_user, Hash, get_email_from_token
-from db import Base, engine, get_db, Contact, User
+from db import Base, engine, get_db, User
 from schemas import ContactCreate, ContactUpdate, ContactResponse, UserModel
 from src.services.email import send_email
 from src.services.upload_file import UploadFileService
@@ -52,6 +52,9 @@ async def signup(
         background_tasks: BackgroundTasks,
         request: Request,
         db: Session = Depends(get_db)):
+    """
+    Create a new user
+    """
     exist_user = db.query(User).filter(User.username == body.username).first()
     if exist_user:
         raise HTTPException(
@@ -75,6 +78,9 @@ async def signup(
 async def login(
     body: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
+    """
+    Login user
+    """
     user = db.query(User).filter(User.username == body.username).first()
     if user is None:
         raise HTTPException(
@@ -105,6 +111,9 @@ def create_contact(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    """
+    Create a new contact
+    """
     contact_repo = ContactRepository(db)
     new_contact = contact_repo.create_contact(contact, user_id=current_user.id)
     return new_contact
@@ -117,6 +126,9 @@ def read_contacts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Get contacts
+    """
     contact_repo = ContactRepository(db)
     return contact_repo.get_contacts(name, email, current_user.id)
 
@@ -127,6 +139,9 @@ def read_contact(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    """
+    Get contact
+    """
     contact_repo = ContactRepository(db)
     contact = contact_repo.get_contact_by_id(contact_id, current_user.id)
     if not contact:
@@ -140,6 +155,9 @@ def update_contact(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    """
+    Update contact
+    """
     contact_repo = ContactRepository(db)
     return contact_repo.update_contact(contact_id, current_user.id, contact.dict(exclude_unset=True))
 
@@ -150,6 +168,9 @@ def delete_contact(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    """
+    Delete contact
+    """
     contact_repo = ContactRepository(db)
     return contact_repo.delete_contact(contact_id, current_user.id)
 
@@ -159,6 +180,9 @@ def upcoming_birthdays(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    """
+    Get upcoming birthdays
+    """
     today = date.today()
     next_week = today + timedelta(days=7)
     contacts_repo = ContactRepository(db)
@@ -168,6 +192,9 @@ def upcoming_birthdays(
 
 @app.get("/confirmed_email/{token}")
 async def confirmed_email(token: str, db: Session = Depends(get_db)):
+    """
+    Confirm email
+    """
     email = await get_email_from_token(token)
 
     user = db.query(User).filter(User.username == email).first()
@@ -189,6 +216,9 @@ async def update_avatar_user(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Update avatar user
+    """
     avatar_url = UploadFileService(
         CLD_NAME, CLD_API_KEY, CLD_API_SECRET
     ).upload_file(file, current_user.username)
@@ -203,6 +233,9 @@ async def update_avatar_user(
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """
+    Rate limit handler
+    """
     return JSONResponse(
         status_code=429,
         content={"error": "Rate limit exceeded. Please try again later."},
@@ -212,6 +245,9 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 @app.get("/me")
 @limiter.limit("5/minute")
 async def my_endpoint(request: Request):
+    """
+    My endpoint
+    """
     return {"message": "The route with limitations."}
 
 if __name__ == "__main__":

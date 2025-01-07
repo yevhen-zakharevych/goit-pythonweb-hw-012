@@ -46,6 +46,9 @@ Base.metadata.create_all(bind=engine)
 
 # Dependency
 def get_db():
+    """
+    Dependency function to get a database session.
+    """
     db = SessionLocal()
     try:
         yield db

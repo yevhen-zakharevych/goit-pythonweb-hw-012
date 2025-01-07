@@ -34,6 +34,17 @@ conf = ConnectionConfig(
 
 
 async def send_email(email: EmailStr, username: str, host: str):
+    """
+    Send email verification
+
+    Parameters:
+        email (str): Email
+        username (str): Username
+        host (str): Host
+
+    Returns:
+        None
+    """
     try:
         token_verification = create_email_token({"sub": email})
         message = MessageSchema(
