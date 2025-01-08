@@ -13,6 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+import redis
 
 from src.services.auth import create_access_token, get_current_user, Hash, get_email_from_token
 from src.db import Base, engine, get_db, User
@@ -31,6 +32,7 @@ CLD_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET")
 app = FastAPI()
 hash_handler = Hash()
 limiter = Limiter(key_func=get_remote_address)
+r = redis.Redis(host='localhost', port=6379, db=0)
 
 origins = [
     "http://localhost",
@@ -102,6 +104,8 @@ async def login(
         )
     # Generate JWT
     access_token = await create_access_token(data={"sub": user.username})
+    await r.setex(access_token, 3600, user.json())
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -253,6 +257,30 @@ async def my_endpoint(request: Request):
     My endpoint
     """
     return {"message": "The route with limitations."}
+
+
+@app.get("/protected-route")
+async def protected_route(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Example protected route that retrieves the user from Redis or the database.
+    """
+    cached_user = r.get(token)
+    if cached_user:
+        return {"message": f"Hello, {cached_user.username}!"}
+
+    user = db.query(User).filter(User.username == current_user.username).first()
+    user = user.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    r.setex(token, 3600, user.json())
+
+    return {"message": f"Hello, {user.username}!"}
 
 if __name__ == "__main__":
     import uvicorn

@@ -4,3 +4,5 @@ venv
 .idea/
 __pycache__
 tests/test.db
+test.db
+.coverage
