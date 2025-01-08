@@ -1,11 +1,13 @@
 from datetime import date
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class UserModel(BaseModel):
     username: str
     password: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContactBase(BaseModel):

@@ -1,4 +1,5 @@
 import os
+import json
 
 from datetime import date, timedelta
 from typing import List, Optional
@@ -32,7 +33,7 @@ CLD_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET")
 app = FastAPI()
 hash_handler = Hash()
 limiter = Limiter(key_func=get_remote_address)
-r = redis.Redis(host='localhost', port=6379, db=0)
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 origins = [
     "http://localhost",
@@ -58,7 +59,7 @@ async def signup(
     """
     Create a new user
     """
-    exist_user = await db.execute(select(User).filter(User.username == body.username))
+    exist_user = db.execute(select(User).filter(User.username == body.username))
     exist_user = exist_user.scalars().first()
     if exist_user:
         raise HTTPException(
@@ -85,7 +86,7 @@ async def login(
     """
     Login user
     """
-    result = await db.execute(select(User).filter(User.username == body.username))
+    result = db.execute(select(User).filter(User.username == body.username))
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -104,7 +105,11 @@ async def login(
         )
     # Generate JWT
     access_token = await create_access_token(data={"sub": user.username})
-    await r.setex(access_token, 3600, user.json())
+    user_out = UserModel.from_orm(user)
+
+    print(access_token)
+
+    r.setex(access_token, 3600, user_out.json())
 
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -269,16 +274,14 @@ async def protected_route(
     Example protected route that retrieves the user from Redis or the database.
     """
     cached_user = r.get(token)
+
     if cached_user:
-        return {"message": f"Hello, {cached_user.username}!"}
+        return {"message": f"Hello, {json.loads(cached_user)['username']}!"}
 
     user = db.query(User).filter(User.username == current_user.username).first()
-    user = user.scalar_one_or_none()
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
-
-    r.setex(token, 3600, user.json())
 
     return {"message": f"Hello, {user.username}!"}
 
