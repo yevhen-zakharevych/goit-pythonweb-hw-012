@@ -148,3 +148,16 @@ async def get_email_from_token(token: str):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Invalid token",
         )
+
+
+def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    """
+    Check if user is admin
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Admin role required."
+        )
+
+    return current_user

@@ -22,6 +22,7 @@ class User(Base):
     password = Column(String, nullable=False)
     confirmed = Column(Boolean, default=False)
     avatar_url = Column(String, nullable=True)
+    role = Column(String, default="user")
 
     contacts = relationship("Contact", back_populates="user")
 

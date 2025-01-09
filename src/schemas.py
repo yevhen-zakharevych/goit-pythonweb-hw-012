@@ -6,9 +6,18 @@ from pydantic import BaseModel, ConfigDict
 class UserModel(BaseModel):
     username: str
     password: str
+    role: str
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class ResetRequestPassword(BaseModel):
+    email: str
+
+
+class ResetPassword(BaseModel):
+    token: str
+    new_password: str
 
 class ContactBase(BaseModel):
     first_name: str

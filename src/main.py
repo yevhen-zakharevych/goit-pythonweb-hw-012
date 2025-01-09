@@ -15,10 +15,11 @@ from slowapi.util import get_remote_address
 from starlette.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import redis
+import uuid
 
-from src.services.auth import create_access_token, get_current_user, Hash, get_email_from_token
+from src.services.auth import create_access_token, get_current_user, Hash, get_email_from_token, get_admin_user
 from src.db import Base, engine, get_db, User
-from src.schemas import ContactCreate, ContactUpdate, ContactResponse, UserModel
+from src.schemas import ContactCreate, ContactUpdate, ContactResponse, UserModel, ResetPassword, ResetRequestPassword
 from src.services.email import send_email
 from src.services.upload_file import UploadFileService
 from src.repositories.contacts import ContactRepository
@@ -29,6 +30,7 @@ load_dotenv()
 CLD_NAME = os.environ.get("CLOUDINARY_NAME")
 CLD_API_KEY = os.environ.get("CLOUDINARY_API_KEY")
 CLD_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET")
+RESET_PASSWORD_TOKENS = {}
 
 app = FastAPI()
 hash_handler = Hash()
@@ -66,7 +68,9 @@ async def signup(
             status_code=status.HTTP_409_CONFLICT, detail="Account already exists"
         )
     new_user = User(
-        username=body.username, password=hash_handler.get_password_hash(body.password)
+        username=body.username,
+        password=hash_handler.get_password_hash(body.password),
+        role="user"
     )
     db.add(new_user)
     db.commit()
@@ -226,7 +230,7 @@ async def confirmed_email(token: str, db: Session = Depends(get_db)):
 @app.patch("/avatar")
 async def update_avatar_user(
     file: UploadFile = File(),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -284,6 +288,65 @@ async def protected_route(
         raise HTTPException(status_code=401, detail="Invalid token")
 
     return {"message": f"Hello, {user.username}!"}
+
+
+@app.post("/request-reset-password/")
+async def request_reset_password(
+        body: ResetRequestPassword,
+        background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db),
+):
+    """
+    Request reset password
+    """
+    user = db.query(User).filter(User.username == body.email).first()
+
+    print(f'user {user}')
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    reset_token = str(uuid.uuid4())
+    RESET_PASSWORD_TOKENS[reset_token] = user.username
+
+    reset_link = f"http://127.0.0.1:8000/reset-password/{reset_token}"
+    background_tasks.add_task(send_email, body.email, "Reset your password", reset_link)
+
+    print(RESET_PASSWORD_TOKENS)
+
+    return {"message": "Password reset email sent"}
+
+
+@app.get("/reset-password/{token}")
+async def reset_password_form(token: str):
+    """
+    Reset password form
+    """
+    if token not in RESET_PASSWORD_TOKENS:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    return {"message": "Please provide a new password"}
+
+
+@app.post("/reset-password/{token}")
+async def reset_password(
+    body: ResetPassword, db: Session = Depends(get_db)
+):
+    """
+    Reset password
+    """
+    if body.token not in RESET_PASSWORD_TOKENS:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    username = RESET_PASSWORD_TOKENS.pop(body.token)
+    user = db.query(User).filter(User.username == username).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.password = hash_handler.get_password_hash(body.new_password)
+    db.commit()
+
+    return {"message": "Password updated successfully"}
 
 if __name__ == "__main__":
     import uvicorn
